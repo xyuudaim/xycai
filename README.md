@@ -44,4 +44,4 @@ npm run build   # compile TypeScript to dist/
 During development you can run the CLI locally with `node dist/index.js` after building.
 
 ## Credits
-`xycai` is a fork of [omgvibe](https://github.com/DogeNet-LLC/omgvibe) by DogeNet LLC, released under the MIT License. See [LICENSE](LICENSE).
+Thanks to DogeNet LLC. This software is released under the MIT License (see [LICENSE](LICENSE)).
