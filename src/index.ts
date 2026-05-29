@@ -28,7 +28,7 @@ type Messages = {
   yes: string;
   no: string;
   codexModelPrompt: string;
-  codexModels: Array<{ value: 'gpt-5' | 'gpt-5-codex'; title: string; description?: string }>;
+  codexModels: Array<{ value: string; title: string; description?: string }>;
   apiKeyPrompt: string;
   apiKeyHint: string;
   apiKeyValidation: string;
@@ -74,8 +74,11 @@ const TRANSLATIONS: Record<Language, Messages> = {
     no: 'No',
     codexModelPrompt: 'Pick the default CodeX model to set in config.toml',
     codexModels: [
-      { value: 'gpt-5-codex', title: 'gpt-5-codex (latest, optimized for coding - recommended)' },
-      { value: 'gpt-5', title: 'gpt-5 (general purpose)' }
+      { value: 'gpt-5.3-codex', title: 'gpt-5.3-codex (latest, optimized for coding - recommended)' },
+      { value: 'gpt-5.3-codex-spark', title: 'gpt-5.3-codex-spark (faster coding variant)' },
+      { value: 'gpt-5.2-codex', title: 'gpt-5.2-codex (coding)' },
+      { value: 'gpt-5.1-codex-max', title: 'gpt-5.1-codex-max (extended context coding)' },
+      { value: 'gpt-5.4', title: 'gpt-5.4 (general purpose)' }
     ],
     apiKeyPrompt: `Paste your XycAi API key (open ${API_KEY_URL} if you need to create one)`,
     apiKeyHint: 'Your API key is stored locally on this device only.',
@@ -115,8 +118,11 @@ const TRANSLATIONS: Record<Language, Messages> = {
     no: '否',
     codexModelPrompt: '请选择 CodeX 默认模型（写入 config.toml）',
     codexModels: [
-      { value: 'gpt-5-codex', title: 'gpt-5-codex（最新，面向 CodeX 场景优化，推荐）' },
-      { value: 'gpt-5', title: 'gpt-5（通用模型）' }
+      { value: 'gpt-5.3-codex', title: 'gpt-5.3-codex（最新，面向 CodeX 场景优化，推荐）' },
+      { value: 'gpt-5.3-codex-spark', title: 'gpt-5.3-codex-spark（更快的编码变体）' },
+      { value: 'gpt-5.2-codex', title: 'gpt-5.2-codex（编码）' },
+      { value: 'gpt-5.1-codex-max', title: 'gpt-5.1-codex-max（长上下文编码）' },
+      { value: 'gpt-5.4', title: 'gpt-5.4（通用模型）' }
     ],
     apiKeyPrompt: `请输入你的 XycAi API Key（如需创建，请访问 ${API_KEY_URL}）`,
     apiKeyHint: '密钥只会保存在本机。',
@@ -156,8 +162,11 @@ const TRANSLATIONS: Record<Language, Messages> = {
     no: 'いいえ',
     codexModelPrompt: 'config.toml に設定する CodeX のデフォルトモデルを選択してください',
     codexModels: [
-      { value: 'gpt-5-codex', title: 'gpt-5-codex（最新・コード向け最適化 推奨）' },
-      { value: 'gpt-5', title: 'gpt-5（汎用モデル）' }
+      { value: 'gpt-5.3-codex', title: 'gpt-5.3-codex（最新・コード向け最適化 推奨）' },
+      { value: 'gpt-5.3-codex-spark', title: 'gpt-5.3-codex-spark（高速コーディング版）' },
+      { value: 'gpt-5.2-codex', title: 'gpt-5.2-codex（コーディング）' },
+      { value: 'gpt-5.1-codex-max', title: 'gpt-5.1-codex-max（長コンテキスト コーディング）' },
+      { value: 'gpt-5.4', title: 'gpt-5.4（汎用モデル）' }
     ],
     apiKeyPrompt: `XycAi の API Key を入力してください（必要なら ${API_KEY_URL} で作成できます）`,
     apiKeyHint: 'キーはこの端末にのみ保存されます。',
@@ -311,7 +320,7 @@ const configureCodex = async (lang: Language) => {
     { onCancel: () => onCancel(lang) }
   );
 
-  const selectedModel = (model as 'gpt-5' | 'gpt-5-codex') || 'gpt-5-codex';
+  const selectedModel = (model as string) || 'gpt-5.3-codex';
 
   const { apiKey } = await prompts(
     [
