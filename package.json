@@ -36,10 +36,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/xycai/xycai-cli.git"
+    "url": "git+https://github.com/xyuudaim/xycai-LLC.git"
   },
   "bugs": {
-    "url": "https://github.com/xycai/xycai-cli/issues"
+    "url": "https://github.com/xyuudaim/xycai-LLC/issues"
   },
-  "homepage": "https://github.com/xycai/xycai-cli#readme"
+  "homepage": "https://github.com/xyuudaim/xycai-LLC#readme"
 }
