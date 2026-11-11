@@ -51,10 +51,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/xyuudaim/xycai-LLC.git"
+    "url": "git+https://github.com/xyuudaim/xycai.git"
   },
   "bugs": {
-    "url": "https://github.com/xyuudaim/xycai-LLC/issues"
+    "url": "https://github.com/xyuudaim/xycai/issues"
   },
   "homepage": "https://xyc.ai"
 }
