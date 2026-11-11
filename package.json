@@ -1,7 +1,7 @@
 {
   "name": "xycai",
-  "version": "0.2.0",
-  "description": "Interactive NPX wizard for configuring CodeX or Claude Code clients for XycAi API access.",
+  "version": "0.5.0",
+  "description": "XycAi setup wizard for CodeX / Claude Code: cleans conflicting env & config, writes settings, verifies the API live, and diagnoses broken setups (doctor).",
   "type": "commonjs",
   "main": "dist/index.js",
   "bin": {

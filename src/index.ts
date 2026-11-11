@@ -1,547 +1,290 @@
 #!/usr/bin/env node
-
 import prompts from 'prompts';
-import { spawn } from 'child_process';
 import kleur from 'kleur';
-import { homedir } from 'os';
 import path from 'path';
-import fs from 'fs/promises';
-import { existsSync } from 'fs';
-
-type Language = 'en' | 'zh' | 'ja';
-type Target = 'codex' | 'claude';
-
-type Messages = {
-  welcome: string;
-  languagePrompt: string;
-  languageChoices: Array<{ value: Language; title: string; description?: string }>;
-  cancel: string;
-  targetPrompt: string;
-  targets: Record<Target, string>;
-  startInstall: (command: string) => string;
-  installSuccess: string;
-  installFailed: string;
-  confirmOverwrite: string;
-  declineOverwrite: string;
-  installConfirm: (command: string) => string;
-  installSkipped: string;
-  yes: string;
-  no: string;
-  codexModelPrompt: string;
-  codexModels: Array<{ value: string; title: string; description?: string }>;
-  apiKeyPrompt: string;
-  apiKeyHint: string;
-  apiKeyValidation: string;
-  claudeBaseUrlPrompt: string;
-  claudeBaseUrlHint: string;
-  baseUrlValidation: string;
-  writingConfig: string;
-  backupDone: (file: string) => string;
-  noBackupNeeded: (file: string) => string;
-  configWritten: (file: string) => string;
-  finished: (targetLabel: string) => string;
-  docsHint: string;
-};
-
-const API_KEY_URL = 'https://xyc.ai/keys';
-const CODEX_BASE_URL = 'https://apicdn.xyc.ai/v1';
-const CLAUDE_BASE_URL_DEFAULT = 'https://apicdn.xyc.ai/';
-
-const TRANSLATIONS: Record<Language, Messages> = {
-  en: {
-    welcome: '🚀  Ready to wire CodeX or Claude Code to XycAi? Let\'s get your CLI in shape.',
-    languagePrompt: 'Select the language for this setup wizard',
-    languageChoices: [
-      { value: 'en', title: 'English (Default)' },
-      { value: 'zh', title: '简体中文' },
-      { value: 'ja', title: '日本語' }
-    ],
-    cancel: 'Setup cancelled. Nothing was changed.',
-    targetPrompt: 'Which CLI do you want to configure today?',
-    targets: {
-      codex: 'CodeX (OpenAI\'s coding assistant)',
-      claude: 'Claude Code (Anthropic)'
-    },
-    startInstall: (command) => `Running ${command} to make sure everything is up to date...`,
-    installSuccess: 'Installation check completed.',
-    installFailed: 'Installation failed. Please review the errors above and run the wizard again.',
-    confirmOverwrite:
-      'We will backup your current configuration (.bak files) and write the XycAi settings. Continue?',
-    declineOverwrite: 'Understood. No files were touched.',
-    installConfirm: (command) => `Run ${command} now to ensure you have the latest release?`,
-    installSkipped: 'Skipped installation. We\'ll use the version already on your machine.',
-    yes: 'Yes',
-    no: 'No',
-    codexModelPrompt: 'Pick the default CodeX model to set in config.toml',
-    codexModels: [
-      { value: 'gpt-5.3-codex', title: 'gpt-5.3-codex (latest, optimized for coding - recommended)' },
-      { value: 'gpt-5.3-codex-spark', title: 'gpt-5.3-codex-spark (faster coding variant)' },
-      { value: 'gpt-5.2-codex', title: 'gpt-5.2-codex (coding)' },
-      { value: 'gpt-5.1-codex-max', title: 'gpt-5.1-codex-max (extended context coding)' },
-      { value: 'gpt-5.4', title: 'gpt-5.4 (general purpose)' }
-    ],
-    apiKeyPrompt: `Paste your XycAi API key (open ${API_KEY_URL} if you need to create one)`,
-    apiKeyHint: 'Your API key is stored locally on this device only.',
-    apiKeyValidation: 'Please enter a non-empty API key.',
-    claudeBaseUrlPrompt: 'Enter the Claude Code base URL to use',
-    claudeBaseUrlHint: `Press enter to use ${CLAUDE_BASE_URL_DEFAULT}`,
-    baseUrlValidation: 'Please enter a valid base URL.',
-    writingConfig: 'Writing configuration files...',
-    backupDone: (file) => `Backup saved: ${file}`,
-    noBackupNeeded: (file) => `No existing file found at ${file}.`,
-    configWritten: (file) => `Updated ${file}`,
-    finished: (targetLabel) => `✅  All done! ${targetLabel} is now configured for XycAi.`,
-    docsHint: 'Tip: run `npx xycai` anytime you want to switch setups again.'
-  },
-  zh: {
-    welcome: '🚀  开始把 CodeX 或 Claude Code 接入 XycAi，一起完成配置吧。',
-    languagePrompt: '请选择向导语言',
-    languageChoices: [
-      { value: 'en', title: 'English (默认英语)' },
-      { value: 'zh', title: '简体中文' },
-      { value: 'ja', title: '日本語 / 日语' }
-    ],
-    cancel: '已取消，文件未做任何修改。',
-    targetPrompt: '你想要配置哪一个 CLI？',
-    targets: {
-      codex: 'CodeX（OpenAI 代码助手）',
-      claude: 'Claude Code（Anthropic）'
-    },
-    startInstall: (command) => `正在执行 ${command}，确保 CLI 已安装且为最新版本……`,
-    installSuccess: '安装检查完成。',
-    installFailed: '安装失败，请检查上方输出后重新运行向导。',
-    confirmOverwrite: '将会先备份（*.bak）再覆写当前配置文件，是否继续？',
-    declineOverwrite: '明白，未对文件进行任何更改。',
-    installConfirm: (command) => `是否现在执行 ${command} 以确保使用最新版本？`,
-    installSkipped: '已跳过安装，将使用你当前的 CLI 版本。',
-    yes: '是',
-    no: '否',
-    codexModelPrompt: '请选择 CodeX 默认模型（写入 config.toml）',
-    codexModels: [
-      { value: 'gpt-5.3-codex', title: 'gpt-5.3-codex（最新，面向 CodeX 场景优化，推荐）' },
-      { value: 'gpt-5.3-codex-spark', title: 'gpt-5.3-codex-spark（更快的编码变体）' },
-      { value: 'gpt-5.2-codex', title: 'gpt-5.2-codex（编码）' },
-      { value: 'gpt-5.1-codex-max', title: 'gpt-5.1-codex-max（长上下文编码）' },
-      { value: 'gpt-5.4', title: 'gpt-5.4（通用模型）' }
-    ],
-    apiKeyPrompt: `请输入你的 XycAi API Key（如需创建，请访问 ${API_KEY_URL}）`,
-    apiKeyHint: '密钥只会保存在本机。',
-    apiKeyValidation: 'API Key 不能为空。',
-    claudeBaseUrlPrompt: '请输入 Claude Code 的 Base URL',
-    claudeBaseUrlHint: `直接回车使用默认地址：${CLAUDE_BASE_URL_DEFAULT}`,
-    baseUrlValidation: 'Base URL 不能为空。',
-    writingConfig: '正在写入配置文件……',
-    backupDone: (file) => `已备份：${file}`,
-    noBackupNeeded: (file) => `未在 ${file} 发现历史文件。`,
-    configWritten: (file) => `已更新 ${file}`,
-    finished: (targetLabel) => `✅  完成！${targetLabel} 已配置为使用 XycAi。`,
-    docsHint: '提示：再次执行 `npx xycai` 可以重新配置。'
-  },
-  ja: {
-    welcome: '🚀  CodeX または Claude Code を XycAi へ接続します。セットアップを始めましょう。',
-    languagePrompt: 'ウィザードで使用する言語を選択してください',
-    languageChoices: [
-      { value: 'en', title: 'English (デフォルト)' },
-      { value: 'zh', title: '简体中文 / 中国語' },
-      { value: 'ja', title: '日本語' }
-    ],
-    cancel: 'セットアップを中止しました。ファイルは変更されていません。',
-    targetPrompt: 'どの CLI を設定しますか？',
-    targets: {
-      codex: 'CodeX（OpenAI のコーディング支援）',
-      claude: 'Claude Code（Anthropic）'
-    },
-    startInstall: (command) => `${command} を実行し、最新バージョンが入っているか確認します…`,
-    installSuccess: 'インストール確認が完了しました。',
-    installFailed: 'インストールに失敗しました。ログを確認してから再実行してください。',
-    confirmOverwrite: '既存の設定を .bak にバックアップしてから XycAi 設定を書き込みます。続行しますか？',
-    declineOverwrite: '了解しました。何も変更していません。',
-    installConfirm: (command) => `${command} を今すぐ実行して最新版に更新しますか？`,
-    installSkipped: 'インストールをスキップしました。現在の CLI バージョンを使用します。',
-    yes: 'はい',
-    no: 'いいえ',
-    codexModelPrompt: 'config.toml に設定する CodeX のデフォルトモデルを選択してください',
-    codexModels: [
-      { value: 'gpt-5.3-codex', title: 'gpt-5.3-codex（最新・コード向け最適化 推奨）' },
-      { value: 'gpt-5.3-codex-spark', title: 'gpt-5.3-codex-spark（高速コーディング版）' },
-      { value: 'gpt-5.2-codex', title: 'gpt-5.2-codex（コーディング）' },
-      { value: 'gpt-5.1-codex-max', title: 'gpt-5.1-codex-max（長コンテキスト コーディング）' },
-      { value: 'gpt-5.4', title: 'gpt-5.4（汎用モデル）' }
-    ],
-    apiKeyPrompt: `XycAi の API Key を入力してください（必要なら ${API_KEY_URL} で作成できます）`,
-    apiKeyHint: 'キーはこの端末にのみ保存されます。',
-    apiKeyValidation: 'API Key を入力してください。',
-    claudeBaseUrlPrompt: 'Claude Code で使用する Base URL を入力してください',
-    claudeBaseUrlHint: `Enter を押すとデフォルト ${CLAUDE_BASE_URL_DEFAULT} を使用します。`,
-    baseUrlValidation: 'Base URL を入力してください。',
-    writingConfig: '設定ファイルを書き込んでいます…',
-    backupDone: (file) => `バックアップ完了: ${file}`,
-    noBackupNeeded: (file) => `${file} に既存ファイルはありませんでした。`,
-    configWritten: (file) => `${file} を更新しました`,
-    finished: (targetLabel) => `✅  完了しました！${targetLabel} は XycAi で利用できます。`,
-    docsHint: '`npx xycai` を再度実行すれば再設定できます。'
-  }
-};
-
-const detectLanguage = (): Language => {
-  const env =
-    process.env.LANG || process.env.LANGUAGE || process.env.LC_ALL || process.env.LC_MESSAGES || '';
-  if (env.toLowerCase().startsWith('zh')) {
-    return 'zh';
-  }
-  if (env.toLowerCase().startsWith('ja')) {
-    return 'ja';
-  }
-  return 'en';
-};
-
-const formatTimestamp = (): string => {
-  const date = new Date();
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  return (
-    date.getFullYear().toString() +
-    pad(date.getMonth() + 1) +
-    pad(date.getDate()) +
-    '-' +
-    pad(date.getHours()) +
-    pad(date.getMinutes()) +
-    pad(date.getSeconds())
-  );
-};
-
-const ensureDir = async (filePath: string) => {
-  const dir = path.dirname(filePath);
-  await fs.mkdir(dir, { recursive: true });
-};
-
-const backupFile = async (filePath: string): Promise<string | null> => {
-  if (!existsSync(filePath)) {
-    return null;
-  }
-  const backupPath = `${filePath}.${formatTimestamp()}.bak`;
-  await fs.copyFile(filePath, backupPath);
-  return backupPath;
-};
-
-const writeFileSafely = async (filePath: string, content: string) => {
-  await ensureDir(filePath);
-  await fs.writeFile(filePath, content, 'utf8');
-};
-
-const runInstallCommand = async (command: string, args: string[], lang: Language): Promise<boolean> => {
-  const messages = TRANSLATIONS[lang];
-  console.log();
-  const printable = [command, ...args].join(' ');
-  console.log(kleur.cyan(messages.startInstall(printable)));
-  return await new Promise<boolean>((resolve) => {
-    const child = spawn(command, args, {
-      stdio: 'inherit',
-      shell: process.platform === 'win32'
-    });
-
-    child.on('error', (error) => {
-      console.error(kleur.red(messages.installFailed));
-      console.error(error);
-      resolve(false);
-    });
-
-    child.on('close', (code) => {
-      if (code === 0) {
-        console.log(kleur.green(messages.installSuccess));
-        resolve(true);
-      } else {
-        console.error(kleur.red(messages.installFailed));
-        resolve(false);
-      }
-    });
-  });
-};
+import { Language, Target, TRANSLATIONS, detectLanguage, CODEX_BASE_URL, CLAUDE_BASE_URL_DEFAULT } from './i18n';
+import { backupFile, writeFileSafely, runInherit, head, ok, warn, bad, info, fetchWithTimeout } from './util';
+import { loadModelChoices, DEFAULT_CODEX_MODEL, DEFAULT_CLAUDE_MODEL, CLAUDE_SMALL_FAST_MODEL } from './models';
+import { scanConflicts, applyCleanup, ENV_VARS, codexHomeDir, claudeConfigDir } from './cleanup';
+import { checkApi, ALT_ENDPOINTS } from './check';
+import { runDoctor } from './doctor';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const PKG = require('../package.json') as { version: string; name: string };
 
 const onCancel = (lang: Language) => {
-  const messages = TRANSLATIONS[lang];
   console.log();
-  console.log(kleur.yellow(messages.cancel));
+  console.log(kleur.yellow(TRANSLATIONS[lang].cancel));
   process.exit(0);
 };
 
-const configureCodex = async (lang: Language) => {
-  const messages = TRANSLATIONS[lang];
+const ask = async <T>(q: prompts.PromptObject, lang: Language): Promise<T> => {
+  const r = await prompts(q, { onCancel: () => onCancel(lang) });
+  return r[q.name as string] as T;
+};
 
-  const codexInstallArgs = ['install', '-g', '@openai/codex'];
-  const codexInstallCommand = ['npm', ...codexInstallArgs];
-  const { runInstall } = await prompts(
-    {
-      type: 'toggle',
-      name: 'runInstall',
-      message: messages.installConfirm(codexInstallCommand.join(' ')),
-      initial: true,
-      active: messages.yes,
-      inactive: messages.no
-    },
-    { onCancel: () => onCancel(lang) }
-  );
+const toggle = (lang: Language, message: string, initial = true) =>
+  ask<boolean>({ type: 'toggle', name: 'v', message, initial, active: TRANSLATIONS[lang].yes, inactive: TRANSLATIONS[lang].no }, lang);
 
-  if (runInstall) {
-    const installOk = await runInstallCommand('npm', codexInstallArgs, lang);
-    if (!installOk) {
+/** 启动时对比 npm 最新版，旧版提示改用 npx xycai@latest（npx 会缓存旧包） */
+const versionCheck = async (lang: Language) => {
+  try {
+    const res = await fetchWithTimeout(`https://registry.npmjs.org/${PKG.name}/latest`, { headers: { accept: 'application/json' } }, 5000);
+    if (!res.ok) return;
+    const { version } = (await res.json()) as { version?: string };
+    if (version && version !== PKG.version && cmpVer(version, PKG.version) > 0) {
+      console.log(kleur.bold().yellow(`⚠  ${TRANSLATIONS[lang].outdated(PKG.version, version)}`));
+      console.log();
+    }
+  } catch {
+    /* offline: ignore */
+  }
+};
+const cmpVer = (a: string, b: string) => {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) - (pb[i] || 0);
+  }
+  return 0;
+};
+
+/** 清理步骤：扫描 → 列出 → 确认 → 执行；返回是否仍有本会话残留的环境变量 */
+const cleanupStep = async (lang: Language, target: Target, interactive: boolean): Promise<void> => {
+  const m = TRANSLATIONS[lang];
+  head(m.scanTitle);
+  const scan = await scanConflicts(target);
+  const hasEnv = scan.env.length || scan.rc.length || scan.winEnv.length;
+  const files = scan.files.filter((f) => f.removable);
+  if (!hasEnv && !files.length && !scan.files.length) {
+    ok(m.scanClean);
+    return;
+  }
+  for (const e of scan.env) (e.source === 'dir' ? info : warn)(e.source === 'dir' ? `${e.name}=${e.value}` : m.scanEnv(e.name, e.value));
+  for (const r of scan.rc) warn(m.scanRc(r.file, r.lineNo, r.line));
+  for (const n of scan.winEnv) warn(m.scanWin(n));
+  for (const f of scan.files) (f.removable ? info : warn)(m.scanFile(f.file, f.reason));
+  const go = interactive ? await toggle(lang, m.cleanConfirm, true) : true;
+  if (!go) {
+    warn(m.cleanSkipped);
+    return;
+  }
+  const rep = await applyCleanup(target, scan, { removeFiles: true });
+  rep.rcEdited.forEach((f) => ok(m.cleanDoneRc(f)));
+  rep.winRemoved.forEach((n) => ok(m.cleanDoneWin(n)));
+  rep.filesRemoved.forEach((f) => ok(m.cleanDoneRemoved(f)));
+  rep.filesEdited.forEach((f) => ok(m.cleanDoneEdited(f)));
+  const still = ENV_VARS[target].filter((n) => process.env[n]?.trim());
+  if (still.length) {
+    warn(m.cleanEnvStillSet(still.join(', ')));
+    // 本进程后续验证不能被旧变量影响
+    for (const n of still) delete process.env[n];
+  }
+  if (rep.rcEdited.length || rep.winRemoved.length || still.length) console.log(kleur.bold().yellow(`  → ${m.cleanNeedNewTerminal}`));
+};
+
+const verifyStep = async (lang: Language, baseUrl: string, apiKey: string): Promise<void> => {
+  const m = TRANSLATIONS[lang];
+  head(m.verifyTitle);
+  const r = await checkApi(baseUrl, apiKey);
+  if (r.status === 'ok') return ok(m.verifyOk(r.models, r.ms));
+  if (r.status === 'unauthorized') {
+    bad(m.verifyUnauthorized);
+    info(r.detail);
+    return;
+  }
+  if (r.status === 'http') return warn(m.verifyHttp(r.code, r.detail));
+  warn(m.verifyNetwork(r.detail));
+  for (const alt of ALT_ENDPOINTS) {
+    if (baseUrl.startsWith(alt)) continue;
+    const r2 = await checkApi(alt, apiKey);
+    if (r2.status === 'ok' || r2.status === 'unauthorized') return ok(m.verifyAltOk(alt));
+  }
+  bad(m.verifyAltNone);
+};
+
+const installStep = async (lang: Language, pkg: string) => {
+  const m = TRANSLATIONS[lang];
+  const args = ['install', '-g', pkg];
+  const cmd = ['npm', ...args].join(' ');
+  if (await toggle(lang, m.installConfirm(cmd), true)) {
+    console.log(kleur.cyan(m.startInstall(cmd)));
+    if (await runInherit('npm', args)) ok(m.installSuccess);
+    else {
+      bad(m.installFailed);
       process.exit(1);
     }
-  } else {
-    console.log(kleur.yellow(messages.installSkipped));
-  }
+  } else warn(m.installSkipped);
+};
 
-  const targetLabel = messages.targets.codex;
-
-  const overwriteAnswer = await prompts(
+const askApiKey = (lang: Language) =>
+  ask<string>(
     {
-      type: 'toggle',
-      name: 'confirm',
-      message: messages.confirmOverwrite,
-      initial: true,
-      active: messages.yes,
-      inactive: messages.no
+      type: 'password',
+      name: 'v',
+      message: `${TRANSLATIONS[lang].apiKeyPrompt}\n`,
+      hint: TRANSLATIONS[lang].apiKeyHint,
+      validate: (v: string) => (v.trim().length > 0 ? true : TRANSLATIONS[lang].apiKeyValidation)
     },
-    { onCancel: () => onCancel(lang) }
+    lang
   );
 
-  if (!overwriteAnswer.confirm) {
-    console.log(kleur.yellow(messages.declineOverwrite));
-    process.exit(0);
+const configureCodex = async (lang: Language) => {
+  const m = TRANSLATIONS[lang];
+  await cleanupStep(lang, 'codex', true);
+  await installStep(lang, '@openai/codex');
+  const models = await loadModelChoices();
+  info(models.live ? m.modelListLive : m.modelListFallback);
+  const model = (await ask<string>({ type: 'select', name: 'v', message: m.codexModelPrompt, choices: models.codex, initial: 0 }, lang)) || DEFAULT_CODEX_MODEL;
+  const apiKey = (await askApiKey(lang)).trim();
+
+  const codexHome = codexHomeDir();
+  const configPath = path.join(codexHome, 'config.toml');
+  const authPath = path.join(codexHome, 'auth.json');
+  head(m.writingConfig);
+  for (const f of [configPath, authPath]) {
+    const b = await backupFile(f);
+    if (b) info(m.backupDone(b));
   }
+  const configContent = `# Generated by npx xycai@latest (${PKG.version}) ${new Date().toISOString()}
+model_provider = "xycai"
+model = "${model}"
+model_reasoning_effort = "high"
+disable_response_storage = true
+preferred_auth_method = "apikey"
 
-  const { model } = await prompts(
-    {
-      type: 'select',
-      name: 'model',
-      message: messages.codexModelPrompt,
-      choices: messages.codexModels,
-      initial: 0
-    },
-    { onCancel: () => onCancel(lang) }
-  );
-
-  const selectedModel = (model as string) || 'gpt-5.3-codex';
-
-  const { apiKey } = await prompts(
-    [
-      {
-        type: 'password',
-        name: 'apiKey',
-        message: `${messages.apiKeyPrompt}\n`,
-        validate: (value: string) => (value.trim().length > 0 ? true : messages.apiKeyValidation),
-        hint: messages.apiKeyHint
-      }
-    ],
-    { onCancel: () => onCancel(lang) }
-  );
-
-  const sanitizedApiKey = (apiKey as string).trim();
-
-  const configPath = path.join(homedir(), '.codex', 'config.toml');
-  const authPath = path.join(homedir(), '.codex', 'auth.json');
-
-  console.log();
-  console.log(kleur.cyan(messages.writingConfig));
-
-  const configBackup = await backupFile(configPath);
-  if (configBackup) {
-    console.log(kleur.gray(messages.backupDone(configBackup)));
-  } else {
-    console.log(kleur.gray(messages.noBackupNeeded(configPath)));
-  }
-
-  const authBackup = await backupFile(authPath);
-  if (authBackup) {
-    console.log(kleur.gray(messages.backupDone(authBackup)));
-  } else {
-    console.log(kleur.gray(messages.noBackupNeeded(authPath)));
-  }
-
-  const configContent = `model_provider = "xycai"\nmodel = "${selectedModel}"\nmodel_reasoning_effort = "high"\ndisable_response_storage = true\npreferred_auth_method = "apikey"\n\n[model_providers.xycai]\nname = "xycai"\nbase_url = "${CODEX_BASE_URL}"\nwire_api = "responses"\n`;
-
-  const authContent = JSON.stringify({ OPENAI_API_KEY: sanitizedApiKey }, null, 2) + '\n';
-
+[model_providers.xycai]
+name = "xycai"
+base_url = "${CODEX_BASE_URL}"
+wire_api = "responses"
+requires_openai_auth = false
+http_headers = { "x-openai-actor-authorization" = "xyc.ai" }
+`;
   await writeFileSafely(configPath, configContent);
-  await writeFileSafely(authPath, authContent);
-
-  console.log(kleur.green(messages.configWritten(configPath)));
-  console.log(kleur.green(messages.configWritten(authPath)));
+  await writeFileSafely(authPath, JSON.stringify({ OPENAI_API_KEY: apiKey }, null, 2) + '\n');
+  ok(m.configWritten(configPath));
+  ok(m.configWritten(authPath));
+  await verifyStep(lang, CODEX_BASE_URL, apiKey);
   console.log();
-  console.log(kleur.bold().green(messages.finished(targetLabel)));
-  console.log(kleur.gray(messages.docsHint));
+  console.log(kleur.bold().green(m.finished(m.targets.codex)));
+  console.log(kleur.gray(m.docsHint));
 };
 
 const configureClaude = async (lang: Language) => {
-  const messages = TRANSLATIONS[lang];
-
-  const claudeInstallArgs = ['install', '-g', '@anthropic-ai/claude-code'];
-  const claudeInstallCommand = ['npm', ...claudeInstallArgs];
-  const { runInstall } = await prompts(
+  const m = TRANSLATIONS[lang];
+  await cleanupStep(lang, 'claude', true);
+  await installStep(lang, '@anthropic-ai/claude-code');
+  const models = await loadModelChoices();
+  info(models.live ? m.modelListLive : m.modelListFallback);
+  const model = (await ask<string>({ type: 'select', name: 'v', message: m.claudeModelPrompt, choices: models.claude, initial: 0 }, lang)) || DEFAULT_CLAUDE_MODEL;
+  const apiKey = (await askApiKey(lang)).trim();
+  const baseRaw = await ask<string>(
     {
-      type: 'toggle',
-      name: 'runInstall',
-      message: messages.installConfirm(claudeInstallCommand.join(' ')),
-      initial: true,
-      active: messages.yes,
-      inactive: messages.no
-    },
-    { onCancel: () => onCancel(lang) }
-  );
-
-  if (runInstall) {
-    const installOk = await runInstallCommand('npm', claudeInstallArgs, lang);
-    if (!installOk) {
-      process.exit(1);
-    }
-  } else {
-    console.log(kleur.yellow(messages.installSkipped));
-  }
-
-  const targetLabel = messages.targets.claude;
-
-  const overwriteAnswer = await prompts(
-    {
-      type: 'toggle',
-      name: 'confirm',
-      message: messages.confirmOverwrite,
-      initial: true,
-      active: messages.yes,
-      inactive: messages.no
-    },
-    { onCancel: () => onCancel(lang) }
-  );
-
-  if (!overwriteAnswer.confirm) {
-    console.log(kleur.yellow(messages.declineOverwrite));
-    process.exit(0);
-  }
-
-  const { apiKey, baseUrl } = await prompts(
-    [
-      {
-        type: 'password',
-        name: 'apiKey',
-        message: `${messages.apiKeyPrompt}\n`,
-        validate: (value: string) => (value.trim().length > 0 ? true : messages.apiKeyValidation),
-        hint: messages.apiKeyHint
-      },
-      {
-        type: 'text',
-        name: 'baseUrl',
-        message: messages.claudeBaseUrlPrompt,
-        initial: CLAUDE_BASE_URL_DEFAULT,
-        hint: messages.claudeBaseUrlHint,
-        validate: (value: string) => {
-          const trimmed = value.trim();
-          try {
-            new URL(trimmed);
-            return true;
-          } catch {
-            return messages.baseUrlValidation;
-          }
+      type: 'text',
+      name: 'v',
+      message: m.claudeBaseUrlPrompt,
+      initial: CLAUDE_BASE_URL_DEFAULT,
+      hint: m.claudeBaseUrlHint,
+      validate: (v: string) => {
+        try {
+          new URL(v.trim());
+          return true;
+        } catch {
+          return m.baseUrlValidation;
         }
       }
-    ],
-    { onCancel: () => onCancel(lang) }
-  );
-
-  const sanitizedApiKey = (apiKey as string).trim();
-  const normalizedBaseUrl = (() => {
-    const trimmed = (baseUrl as string).trim();
-    if (!trimmed.endsWith('/')) {
-      return `${trimmed}/`;
-    }
-    return trimmed;
-  })();
-
-  const settingsPath = path.join(homedir(), '.claude', 'settings.json');
-
-  console.log();
-  console.log(kleur.cyan(messages.writingConfig));
-
-  const settingsBackup = await backupFile(settingsPath);
-  if (settingsBackup) {
-    console.log(kleur.gray(messages.backupDone(settingsBackup)));
-  } else {
-    console.log(kleur.gray(messages.noBackupNeeded(settingsPath)));
-  }
-
-  const settingsContent = JSON.stringify(
-    {
-      env: {
-        DISABLE_TELEMETRY: '1',
-        OTEL_METRICS_EXPORTER: 'otlp',
-        ANTHROPIC_API_KEY: sanitizedApiKey,
-        ANTHROPIC_BASE_URL: normalizedBaseUrl,
-        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1'
-      },
-      includeCoAuthoredBy: false,
-      apiKeyHelper: `echo ${sanitizedApiKey}`,
-      permissions: {
-        allow: [] as string[],
-        deny: [] as string[]
-      }
     },
-    null,
-    2
+    lang
   );
+  const baseUrl = baseRaw.trim().endsWith('/') ? baseRaw.trim() : `${baseRaw.trim()}/`;
 
-  await writeFileSafely(settingsPath, settingsContent + '\n');
-
-  console.log(kleur.green(messages.configWritten(settingsPath)));
+  const settingsPath = path.join(claudeConfigDir(), 'settings.json');
+  head(m.writingConfig);
+  const b = await backupFile(settingsPath);
+  if (b) info(m.backupDone(b));
+  const settings = {
+    env: {
+      DISABLE_TELEMETRY: '1',
+      ANTHROPIC_API_KEY: apiKey,
+      ANTHROPIC_AUTH_TOKEN: apiKey,
+      ANTHROPIC_BASE_URL: baseUrl,
+      ANTHROPIC_MODEL: model,
+      ANTHROPIC_SMALL_FAST_MODEL: CLAUDE_SMALL_FAST_MODEL,
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+      API_TIMEOUT_MS: '500000',
+      BASH_DEFAULT_TIMEOUT_MS: '500000'
+    },
+    includeCoAuthoredBy: false,
+    apiKeyHelper: `echo ${apiKey}`,
+    permissions: { allow: [] as string[], deny: [] as string[] }
+  };
+  await writeFileSafely(settingsPath, JSON.stringify(settings, null, 2) + '\n');
+  ok(m.configWritten(settingsPath));
+  await verifyStep(lang, baseUrl, apiKey);
   console.log();
-  console.log(kleur.bold().green(messages.finished(targetLabel)));
-  console.log(kleur.gray(messages.docsHint));
+  console.log(kleur.bold().green(m.finished(m.targets.claude)));
+  console.log(kleur.gray(m.docsHint));
+};
+
+const pickLanguage = async (): Promise<Language> => {
+  const def = detectLanguage();
+  const choices = TRANSLATIONS[def].languageChoices;
+  const idx = Math.max(0, choices.findIndex((c) => c.value === def));
+  const v = await ask<Language>({ type: 'select', name: 'v', message: TRANSLATIONS[def].languagePrompt, choices, initial: idx }, def);
+  return v || def;
+};
+
+const pickTarget = async (lang: Language): Promise<Target> => {
+  const m = TRANSLATIONS[lang];
+  const v = await ask<Target>(
+    { type: 'select', name: 'v', message: m.targetPrompt, choices: [{ title: m.targets.codex, value: 'codex' }, { title: m.targets.claude, value: 'claude' }], initial: 0 },
+    lang
+  );
+  return v || 'codex';
+};
+
+const usage = () => {
+  console.log(`xycai ${PKG.version}
+  npx xycai@latest                 interactive setup (clean → install → configure → verify)
+  npx xycai@latest doctor [codex|claude]   diagnose the current machine and test the API with the effective key
+  npx xycai@latest clean  [codex|claude]   only remove conflicting env vars / leftover config (with backups)
+  npx xycai@latest --version | --help`);
 };
 
 const main = async () => {
-  const defaultLang = detectLanguage();
-  const initialChoiceIndex = TRANSLATIONS[defaultLang].languageChoices.findIndex(
-    (choice) => choice.value === defaultLang
-  );
+  const argv = process.argv.slice(2);
+  if (argv.includes('--version') || argv.includes('-v')) return console.log(PKG.version);
+  if (argv.includes('--help') || argv.includes('-h')) return usage();
+  const cmd = argv[0];
+  const targetArg = (argv[1] === 'codex' || argv[1] === 'claude' ? argv[1] : undefined) as Target | undefined;
+  const lang = argv.includes('--en') ? 'en' : argv.includes('--zh') ? 'zh' : argv.includes('--ja') ? 'ja' : detectLanguage();
 
-  const languageChoice = await prompts(
-    {
-      type: 'select',
-      name: 'language',
-      message: TRANSLATIONS[defaultLang].languagePrompt,
-      choices: TRANSLATIONS[defaultLang].languageChoices,
-      initial: initialChoiceIndex >= 0 ? initialChoiceIndex : 0
-    },
-    { onCancel: () => onCancel(defaultLang) }
-  );
+  await versionCheck(lang);
 
-  const lang = (languageChoice.language || defaultLang) as Language;
-  const messages = TRANSLATIONS[lang];
-
-  console.log();
-  console.log(kleur.bold().magenta(messages.welcome));
-  console.log();
-
-  const { target } = await prompts(
-    {
-      type: 'select',
-      name: 'target',
-      message: messages.targetPrompt,
-      choices: [
-        { title: messages.targets.codex, value: 'codex' },
-        { title: messages.targets.claude, value: 'claude' }
-      ],
-      initial: 0
-    },
-    { onCancel: () => onCancel(lang) }
-  );
-
-  if (target === 'codex') {
-    await configureCodex(lang);
-  } else if (target === 'claude') {
-    await configureClaude(lang);
-  } else {
-    onCancel(lang);
+  if (cmd === 'doctor') {
+    const t = targetArg ?? (await pickTarget(lang));
+    const good = await runDoctor(lang, t);
+    process.exit(good ? 0 : 2);
   }
+  if (cmd === 'clean') {
+    const t = targetArg ?? (await pickTarget(lang));
+    await cleanupStep(lang, t, true);
+    return;
+  }
+  if (cmd && cmd !== 'setup') {
+    usage();
+    process.exit(1);
+  }
+
+  const chosenLang = await pickLanguage();
+  const m = TRANSLATIONS[chosenLang];
+  console.log();
+  console.log(kleur.bold().magenta(m.welcome));
+  const target = await pickTarget(chosenLang);
+  if (target === 'codex') await configureCodex(chosenLang);
+  else await configureClaude(chosenLang);
 };
 
-main().catch((error) => {
-  console.error(error);
+main().catch((e) => {
+  console.error(e);
   process.exit(1);
 });
