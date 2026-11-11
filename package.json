@@ -1,6 +1,6 @@
 {
   "name": "xycai",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "XycAi setup wizard for CodeX / Claude Code: cleans conflicting env & config, writes settings, verifies the API live, and diagnoses broken setups (doctor).",
   "type": "commonjs",
   "main": "dist/index.js",
@@ -17,10 +17,25 @@
     "prepublishOnly": "npm run build"
   },
   "keywords": [
+    "xycai",
+    "星云AI",
     "codex",
+    "claude code",
     "claude",
+    "gpt",
+    "openai",
+    "anthropic",
+    "claude api",
+    "gpt api",
+    "api 中转",
+    "ai 中转站",
+    "api relay",
+    "llm gateway",
+    "ai 编程",
+    "coding agent",
+    "opencode",
     "cli",
-    "xycai"
+    "setup wizard"
   ],
   "author": "XycAi",
   "license": "MIT",
@@ -41,5 +56,5 @@
   "bugs": {
     "url": "https://github.com/xyuudaim/xycai-LLC/issues"
   },
-  "homepage": "https://github.com/xyuudaim/xycai-LLC#readme"
+  "homepage": "https://xyc.ai"
 }
