@@ -14,6 +14,8 @@ type PricingModel = {
 };
 
 const FALLBACK_CODEX: ModelChoice[] = [
+  { value: 'gpt-6.2-sol', title: 'gpt-6.2-sol' },
+  { value: 'gpt-6.2-astra', title: 'gpt-6.2-astra' },
   { value: 'gpt-6.1-sol', title: 'gpt-6.1-sol' },
   { value: 'gpt-6-astra', title: 'gpt-6-astra' },
   { value: 'gpt-6-sol', title: 'gpt-6-sol' },
@@ -37,6 +39,22 @@ const FALLBACK_CLAUDE: ModelChoice[] = [
 export const DEFAULT_CODEX_MODEL = FALLBACK_CODEX[0].value;
 export const DEFAULT_CLAUDE_MODEL = FALLBACK_CLAUDE[0].value;
 export const CLAUDE_SMALL_FAST_MODEL = 'claude-haiku-5-5';
+
+/** 按名字里的版本号降序（gpt-6.2 > gpt-6.1 > gpt-6 > gpt-5.6；claude-opus-5-5 > claude-opus-5），同版本再按字母序 */
+const versionKey = (name: string): number[] => {
+  const m = name.match(/-(\d+(?:[.-]\d+)*)/);
+  if (!m) return [0];
+  return m[1].split(/[.-]/).map(Number);
+};
+const compareModelVersionDesc = (a: string, b: string): number => {
+  const va = versionKey(a);
+  const vb = versionKey(b);
+  for (let i = 0; i < Math.max(va.length, vb.length); i++) {
+    const d = (vb[i] ?? 0) - (va[i] ?? 0);
+    if (d !== 0) return d;
+  }
+  return a.localeCompare(b);
+};
 
 let cache: { codex: ModelChoice[]; claude: ModelChoice[] } | null = null;
 
@@ -62,7 +80,7 @@ export const loadModelChoices = async (): Promise<{ codex: ModelChoice[]; claude
             Array.isArray(m.enable_groups) &&
             m.enable_groups.some((g) => groups.includes(g))
         )
-        .sort((a, b) => (a.sort_order ?? 10) - (b.sort_order ?? 10) || a.model_name.localeCompare(b.model_name))
+        .sort((a, b) => (a.sort_order ?? 10) - (b.sort_order ?? 10) || compareModelVersionDesc(a.model_name, b.model_name))
         .map<ModelChoice>((m) => ({ value: m.model_name, title: m.model_name, description: shortDesc(m.description) }));
     // Codex 只要新一代推理模型（gpt-5.x / gpt-6.x），过滤掉 nano / mini / 历史 4.x
     const codex = pick('gpt-', ['gpt-ent', 'gpt-eco']).filter(

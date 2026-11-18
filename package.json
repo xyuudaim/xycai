@@ -1,6 +1,6 @@
 {
   "name": "xycai",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "XycAi 大模型 API 中转站 · AI 中转站 Claude/GPT 低至2折 · 企业合法开票(普票专票) · 异常缓存创建费100%退还 · SLA不达标自动赔付20% — one-command setup for Codex / Claude Code (clean, configure, verify, doctor).",
   "type": "commonjs",
   "main": "dist/index.js",
